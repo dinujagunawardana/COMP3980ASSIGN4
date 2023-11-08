@@ -17,7 +17,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <inttypes.h>
-#include <limits.h>
 #include <netdb.h>
 #include <netinet/in.h>
 #include <signal.h>
@@ -26,6 +25,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static void setup_signal_handler(void);
@@ -363,8 +363,20 @@ static void handle_connection(int client_sockfd)
 
     received = read(client_sockfd, message, sizeof(message));
 
-    if(received > 0)
+    if(received == 0)
     {
+        // Connection closed gracefully
+        printf("Connection closed by the client\n");
+    }
+    else if(received < 0)
+    {
+        // Error reading from the socket
+        perror("Error reading from socket");
+        // Handle the error or exit the program.
+    }
+    else
+    {
+        // Data was successfully read
         message[received] = '\0';
         printf("Message received: %s\n", message);
     }
@@ -412,14 +424,28 @@ void parseCommand(char *command, char *tokens[], int *token_count)
 char *findBinaryInPath(const char *command)
 {
     char *path;
-    char *path_copy;
+    char *path_copy = NULL;    // Initialize to NULL
     char *dir;
     char  binary_path[SIZE];
     char *saveptr;
 
-    path      = getenv("PATH");
-    path_copy = strdup(path);
-    dir       = strtok_r(path_copy, ":", &saveptr);
+    path = getenv("PATH");
+
+    if(path != NULL)
+    {
+        path_copy = strdup(path);
+        if(path_copy == NULL)
+        {
+            perror("strdup");
+            return NULL;    // Handle strdup failure by returning NULL
+        }
+        dir = strtok_r(path_copy, ":", &saveptr);
+    }
+    else
+    {
+        perror("getenv");
+        return NULL;    // Handle missing PATH environment variable by returning NULL
+    }
 
     while(dir != NULL)
     {
@@ -435,7 +461,7 @@ char *findBinaryInPath(const char *command)
     }
 
     free(path_copy);
-    return NULL;
+    return NULL;    // Return NULL if the binary is not found in any of the directories
 }
 
 void execCommand(char *command)
